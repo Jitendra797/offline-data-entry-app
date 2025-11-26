@@ -21,7 +21,6 @@ import { EXPO_PUBLIC_BACKEND_URL } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { getIdToken } from '../../../services/auth/tokenStorage';
-import { ReLoginModal } from '../../components/ReLoginModal';
 
 type FormsNavigationProp = NativeStackNavigationProp<
   FormStackParamList,
@@ -58,8 +57,6 @@ function Forms() {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const navigation = useNavigation<FormsNavigationProp>();
-  const [showReLoginModal, setShowReLoginModal] = useState(false);
-  const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const STORAGE_KEY = 'pendingSubmissions';
 
   useFocusEffect(
@@ -270,15 +267,17 @@ function Forms() {
                 if (
                   message.includes('Session expired') ||
                   message.includes('SESSION_EXPIRED') ||
-                  message.includes('sign in again') ||
+                  message.includes('sign in again')
+                ) {
+                  message =
+                    'Session expired. Please sign out and sign in again to continue.';
+                } else if (
                   message.toLowerCase().includes('token') ||
                   message.toLowerCase().includes('unauthorized') ||
                   message.toLowerCase().includes('authentication')
                 ) {
-                  // Trigger re-login modal
-                  setRetryAction(() => handleSubmitAllForms);
-                  setShowReLoginModal(true);
-                  return;
+                  message =
+                    'Authentication error. Please try again or sign in again.';
                 }
 
                 Alert.alert(t('formsScreen.submitError'), message);
@@ -372,9 +371,14 @@ function Forms() {
                 error?.message?.includes('SESSION_EXPIRED') ||
                 error?.message?.includes('sign in again')
               ) {
-                // Trigger re-login modal
-                setRetryAction(() => () => handleSubmitSingleForm(formData));
-                setShowReLoginModal(true);
+                const processedResult = {
+                  success: false,
+                  form: formData,
+                  reason:
+                    'Session expired. Please sign out and sign in again to continue.',
+                };
+                setSubmissionResults([processedResult]);
+                setShowSubmissionSummary(true);
                 return;
               }
 
@@ -422,8 +426,14 @@ function Forms() {
                     return;
                   } else {
                     // Token refresh failed - session likely expired
-                    setRetryAction(() => () => handleSubmitSingleForm(formData));
-                    setShowReLoginModal(true);
+                    const processedResult = {
+                      success: false,
+                      form: formData,
+                      reason:
+                        'Authentication failed. Please sign out and sign in again.',
+                    };
+                    setSubmissionResults([processedResult]);
+                    setShowSubmissionSummary(true);
                     return;
                   }
                 } catch (retryError: any) {
@@ -436,8 +446,14 @@ function Forms() {
                     retryError?.message?.includes('Session expired') ||
                     retryError?.message?.includes('SESSION_EXPIRED')
                   ) {
-                    setRetryAction(() => () => handleSubmitSingleForm(formData));
-                    setShowReLoginModal(true);
+                    const processedResult = {
+                      success: false,
+                      form: formData,
+                      reason:
+                        'Session expired. Please sign out and sign in again.',
+                    };
+                    setSubmissionResults([processedResult]);
+                    setShowSubmissionSummary(true);
                     return;
                   }
                   // Fall through to show original error
@@ -460,9 +476,8 @@ function Forms() {
                 errorMessage.toLowerCase().includes('unauthorized') ||
                 errorMessage.toLowerCase().includes('authentication')
               ) {
-                setRetryAction(() => () => handleSubmitSingleForm(formData));
-                setShowReLoginModal(true);
-                return;
+                errorMessage =
+                  'Authentication error. Please try again or sign in again.';
               }
 
               const processedResult = {
@@ -685,20 +700,6 @@ function Forms() {
           })
         )}
       </View>
-      <ReLoginModal
-        visible={showReLoginModal}
-        onSuccess={() => {
-          setShowReLoginModal(false);
-          if (retryAction) {
-            retryAction();
-            setRetryAction(null);
-          }
-        }}
-        onCancel={() => {
-          setShowReLoginModal(false);
-          setRetryAction(null);
-        }}
-      />
     </SafeAreaView>
   );
 }
