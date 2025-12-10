@@ -59,6 +59,22 @@ const FormDetail: React.FC<Props> = ({ navigation }) => {
   const { theme } = useTheme();
   const isSubmittedRef = useRef(false);
 
+  // Helper function to check if a field should be enabled based on depends_on
+  const isFieldEnabled = useCallback((field: RawField) => {
+    if (!field.depends_on) return true;
+
+    if (field.depends_on.startsWith('eval:doc.')) {
+      const regex = /^eval:doc\.([a-zA-Z0-9_]+)\s*==\s*["'](.+)["']$/;
+      const match = field.depends_on.match(regex);
+      if (match) {
+        const [_, fieldName, expectedValue] = match;
+        return formData[fieldName] === expectedValue;
+      }
+      return false;
+    }
+    return true;
+  }, [formData]);
+
   const loginAndFetchFields = useCallback(async () => {
     let allFields: RawField[] = [];
 
@@ -128,11 +144,15 @@ const FormDetail: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
-    const missingFields = fields.filter(
-      field =>
-        !formData[field.fieldname] ||
-        formData[field.fieldname].toString().trim() === ''
-    );
+    // Only check fields that are enabled (not disabled by depends_on)
+    const missingFields = fields.filter(field => {
+      const isEnabled = isFieldEnabled(field);
+      const isEmpty = !formData[field.fieldname] ||
+        formData[field.fieldname].toString().trim() === '';
+      
+      // Only report as missing if the field is enabled AND empty
+      return isEnabled && isEmpty;
+    });
 
     if (missingFields.length > 0) {
       const fieldNames = missingFields
@@ -204,7 +224,7 @@ const FormDetail: React.FC<Props> = ({ navigation }) => {
         t('formDetail.discardChanges'),
         t('formDetail.unsavedDataMessage'),
         [
-          { text: t('common.cancel'), style: 'cancel', onPress: () => {} },
+          { text: t('common.cancel'), style: 'cancel', onPress: () => { } },
           {
             text: t('formDetail.discard'),
             style: 'destructive',
@@ -371,8 +391,8 @@ const FormDetail: React.FC<Props> = ({ navigation }) => {
                 const optionsList =
                   isSelectField && field.options
                     ? field.options
-                        .split('\n')
-                        .filter((opt: string) => opt.trim())
+                      .split('\n')
+                      .filter((opt: string) => opt.trim())
                     : [];
                 const isLinkField = field.fieldtype === 'Link' && field.options;
                 const isDateField = field.fieldtype === 'Date';
@@ -396,6 +416,8 @@ const FormDetail: React.FC<Props> = ({ navigation }) => {
                     </Text>
                     {isSelectField ? (
                       <SelectDropdown
+                        formData={formData}
+                        dependsOn={field.depends_on || undefined}
                         options={optionsList}
                         value={selectedValue}
                         onValueChange={value =>
@@ -450,7 +472,7 @@ const FormDetail: React.FC<Props> = ({ navigation }) => {
                             index: rowIndex,
                             initialRow:
                               Array.isArray(selectedValue) &&
-                              selectedValue[rowIndex]
+                                selectedValue[rowIndex]
                                 ? selectedValue[rowIndex]
                                 : null,
                           })
